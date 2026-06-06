@@ -11,6 +11,9 @@ class AUTH_MESSAGES:
         class FAIL:
             INVALID = "이메일 또는 비밀번호가 일치하지 않습니다."
 
+    class RE_TOKEN:
+        SUCCESS = "액세스토큰 재발급에 성공했습니다."
+
 
 class USER_MESSAGES:
     class CREATE:

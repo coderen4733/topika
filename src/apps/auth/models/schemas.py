@@ -31,6 +31,25 @@ class SignUpReq(BaseModel):
     )
 
 
+# 회원가입 응답 - Response Schema
+class SignUpRes(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    email: str
+    nickname: str
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "_id": "6a241da8d3ba388591b98cdd",
+                "email": "fastapi@gmail.com",
+                "nickname": "FastAPI",
+            }
+        },
+    )
+
+
 # 로그인(sign_in)
 # 로그인 요청 - Request Schema
 class SignInReq(BaseModel):
