@@ -30,4 +30,5 @@ async def read_me(
 ):
     # 1. Data(Router <- Service)
     data = await user_service.read_me(current_user)
+    # 2. Response(Router -> Front)
     return {"message": USER_MESSAGES.READ_ME.SUCCESS, "data": data}

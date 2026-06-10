@@ -11,6 +11,15 @@ class AUTH_MESSAGES:
         class FAIL:
             INVALID = "이메일 또는 비밀번호가 일치하지 않습니다."
 
+    class RE_TOKEN:
+        SUCCESS = "액세스토큰 재발급에 성공했습니다."
+
+        class FAIL:
+            INVALID = "유효하지 않은 리프레시 토큰입니다."
+            EXPIRED = "리프레시 토큰이 만료되었습니다."
+            SESSION = "인증 세션이 유효하지 않습니다."
+            UNAUTHORIZED = "만료되었거나 유효하지 않은 리프레시 토큰입니다."
+
 
 class USER_MESSAGES:
     class CREATE:
