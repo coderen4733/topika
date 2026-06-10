@@ -4,9 +4,12 @@ import bcrypt
 import jwt  # pip install bcrypt pyjwt
 from fastapi import HTTPException, status
 
+from src.apps.auth.models.entities import RefreshTokenEntity
 from src.apps.auth.models.schemas import ReTokenReq, SignInReq, SignUpReq
+from src.apps.auth.repository import AuthRepository
 from src.apps.user.models.entities import UserEntity
 from src.apps.user.repository import UserRepository
+from src.common.messages import AUTH_MESSAGES
 from src.core.config import (
     ACCESS_TOKEN_EXPIRE,
     ACCESS_TOKEN_SECRET,
@@ -17,8 +20,11 @@ from src.core.config import (
 
 
 class AuthService:
-    def __init__(self, user_repository: UserRepository):
+    def __init__(
+        self, user_repository: UserRepository, auth_repository: AuthRepository
+    ):
         self.user_repository = user_repository
+        self.auth_repository = auth_repository
 
     # 회원가입(sign-up) Business Logic
     async def sign_up(self, dto: SignUpReq) -> dict:
@@ -31,7 +37,7 @@ class AuthService:
         if is_duplicate_email:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="이미 가입된 이메일입니다.",
+                detail=AUTH_MESSAGES.SIGN_UP.FAIL.DUPLICATE,
             )
 
         # 3. password 해싱(암호화)
@@ -53,7 +59,7 @@ class AuthService:
         return await self.user_repository.create_user(user_entity)
 
     # 로그인(sign-in)
-    async def sign_in(self, dto: SignInReq) -> dict:
+    async def sign_in(self, dto: SignInReq, ip_address: str) -> dict:
         # 1. user 조회
         user = await self.user_repository.get_user_by_email(dto.email)
         # 1-1. user가 없거나 비밀번호 불일치 시
@@ -62,7 +68,7 @@ class AuthService:
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="이메일 또는 비밀번호가 일치하지 않습니다.",
+                detail=AUTH_MESSAGES.SIGN_IN.FAIL.INVALID,
             )
 
         # 2. Token 생성
@@ -88,10 +94,22 @@ class AuthService:
             refresh_payload, REFRESH_TOKEN_SECRET, algorithm=JWT_ALGORITHM
         )
 
-        # 3. Refresh Token을 DB의 해당 유저 문서에 저장
-        await self.user_repository.re_token(user["_id"], refresh_token, now)
+        # 3. 엔티티 생성
+        refresh_token_entity = RefreshTokenEntity(
+            user_id=str(user["_id"]),
+            ip_address=ip_address,
+            refresh_token=refresh_token,
+        )
 
-        # 4. Response
+        # 4. Refresh Token을 DB의 해당 유저 문서에 저장
+        await self.auth_repository.create_refresh_token(refresh_token_entity)
+
+        # 5. 로그인 일시 기록
+        await self.user_repository.last_sign_in_time(
+            refresh_token_entity.user_id, now
+        )
+
+        # 6. Response
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
@@ -115,16 +133,22 @@ class AuthService:
             if user_id is None or token_type != "refresh":
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="유효하지 않은 리프레시 토큰입니다.",
+                    detail=AUTH_MESSAGES.RE_TOKEN.FAIL.INVALID,
                 )
 
             # 2. DB에 저장된 토큰과 일치하는지 확인 (중요: 보안 강화)
             user = await self.user_repository.get_user_by_id(user_id)
-            # 2-1. 만약 해당 user가 없거나 저장된 리프레시 토큰이 없는 경우
-            if user is None or user.get("refresh_token") != dto.refresh_token:
+            refresh_token = (
+                await self.auth_repository.get_refresh_token_by_refresh_token(
+                    dto.refresh_token
+                )
+            )
+            # 2-1. 만약 해당 user가 없거나 토큰 소유 user가 일치하지 않는 경우
+            print("요청 : ", user_id, "토큰 속 : ", refresh_token["user_id"])
+            if user is None or user_id != refresh_token["user_id"]:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="만료되었거나 유효하지 않은 리프레시 토큰입니다.",
+                    detail=AUTH_MESSAGES.RE_TOKEN.FAIL.UNAUTHORIZED,
                 )
 
             # 3. 새로운 Access Token 발행
@@ -141,10 +165,10 @@ class AuthService:
         except jwt.ExpiredSignatureError:  # 리프레시 토큰 만료기간이 지났을 때
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="리프레시 토큰이 만료되었습니다.",
+                detail=AUTH_MESSAGES.RE_TOKEN.FAIL.EXPIRED,
             )
         except jwt.PyJWTError:  # 토큰이 위조되었거나 변조되었을 때
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="인증 세션이 유효하지 않습니다.",
+                detail=AUTH_MESSAGES.RE_TOKEN.FAIL.SESSION,
             )

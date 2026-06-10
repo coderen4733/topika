@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from src.apps.auth.dependencies import get_auth_service
 from src.apps.auth.models.schemas import (
@@ -40,10 +40,12 @@ async def sign_up(
     status_code=status.HTTP_200_OK,
 )
 async def sign_in(
-    dto: SignInReq, auth_service: AuthService = Depends(get_auth_service)
+    dto: SignInReq,
+    request: Request,
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     # 1. Data(Router <- Service)
-    data = await auth_service.sign_in(dto)
+    data = await auth_service.sign_in(dto, ip_address=request.client.host)
     # 2. Response(Router -> Front)
     return {"message": AUTH_MESSAGES.SIGN_IN.SUCCESS, "data": data}
 
